@@ -1105,20 +1105,36 @@ const APPROVED_KEY = "ms_approved_listings";
 // ── Secure GAS API helper ──
 async function gasCall(action, data={}, useToken=false) {
   if(!GAS_URL || GAS_URL.includes("YOUR_GAS")) {
-    console.warn("GAS_URL not configured — using localStorage fallback");
+    console.warn("GAS_URL not configured");
     return null;
   }
   const payload = { action, ...data };
   if(useToken) payload.token = sessionStorage.getItem("ms_admin_token") || "";
+
   try {
+    // ✅ KEY FIX: Do NOT set Content-Type header.
+    // Without it, fetch() sends a "simple request" — no OPTIONS preflight.
+    // GAS receives the body fine via e.postData.contents.
     const r = await fetch(GAS_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      // NO headers: {} — this avoids CORS preflight
       body: JSON.stringify(payload),
     });
-    return await r.json();
+
+    if(!r.ok) {
+      console.error("GAS HTTP error:", r.status);
+      return null;
+    }
+
+    const text = await r.text();
+    try {
+      return JSON.parse(text);
+    } catch(e) {
+      console.error("GAS non-JSON response:", text.slice(0, 200));
+      return null;
+    }
   } catch(err) {
-    console.error("GAS call failed:", err);
+    console.error("GAS call failed:", err.message);
     return null;
   }
 }
