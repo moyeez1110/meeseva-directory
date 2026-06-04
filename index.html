@@ -1815,7 +1815,7 @@ function closeLightbox(){
 }
 
 /* ── Touch swipe on gallery ── */
-let _gsx=0;
+let _gsx=0, _sx=0;
 document.getElementById("profilePg").addEventListener("touchstart",e=>{
   _gsx = e.touches[0].clientX;
   _sx  = e.touches[0].clientX; // also for swipe-back
@@ -2080,6 +2080,8 @@ function trackFailedLogin(){
 function showAdminDash(){
   document.getElementById("adminLock").style.display = "none";
   document.getElementById("adminDash").style.display = "block";
+  const info = document.getElementById("adminSessionInfo");
+  if(info) info.textContent = new Date().toLocaleTimeString("te-IN",{hour:"2-digit",minute:"2-digit"}) + " లో login";
   loadAdminDash();
 }
 
@@ -2647,16 +2649,14 @@ function goScreen(s){
   const ticker = document.getElementById("tickerWrap");
   if(ticker) ticker.style.display = s==="s-home" ? "flex" : "none";
 
-  // Hide all screens
+  // Hide all screens — classList only so CSS .screen.on{display:flex} works
   document.querySelectorAll(".screen").forEach(el=>{
-    el.style.display = "none";
     el.classList.remove("on");
   });
 
   // Show target screen
   const target = document.getElementById(s);
   if(target){
-    target.style.display = "flex";
     target.classList.add("on");
   }
 
