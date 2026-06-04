@@ -2194,7 +2194,7 @@ function renderAdminListLocal(){
   renderAllCentersList();
 }
 
-function renderAdminList(){ loadAdminPending(); } // alias
+async function renderAdminList(){ await loadAdminPending(); } // alias
 
 function loadApprovedListings(){
   try{ return JSON.parse(localStorage.getItem(APPROVED_KEY)||"[]"); }
