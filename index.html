@@ -615,6 +615,11 @@ body{font-family:'Space Grotesk',system-ui,sans-serif;font-size:14px;color:var(-
         <div><div class="ms-n1">మీసేవ డైరెక్టరీ</div><div class="ms-n2">Telangana · All 33 Districts</div></div>
       </div>
       <div class="tb-icons">
+        <div id="pollBadge"
+          onclick="_pollPaused ? resumePoll() : pausePoll()"
+          style="font-size:10px;font-weight:700;padding:4px 9px;border-radius:20px;cursor:pointer;background:var(--grn3);color:var(--grn);letter-spacing:.3px;flex-shrink:0;transition:.2s">
+          🟢 Live
+        </div>
         <div class="tb-ico" onclick="goScreen('s-notif')"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><div class="notif-dot"></div></div>
       </div>
     </div>
@@ -1260,6 +1265,85 @@ const DEMO=[
 let ALL=[], CUR_V="grid", PP_D=null, PP_M=null;
 
 /* ══ INIT ══ */
+/* ══ AUTO-POLL — Sheet changes app లో live update అవుతాయి ══ */
+let _pollTimer = null;
+let _lastHash  = "";
+let _pollPaused = false;
+
+const POLL_INTERVAL = 30000;
+
+async function startAutoPoll() {
+  if (_pollTimer) return;
+  updatePollBadge("live");
+  _pollTimer = setInterval(async () => {
+    if (_pollPaused || !navigator.onLine) return;
+    await pollSheet();
+  }, POLL_INTERVAL);
+}
+
+async function pollSheet() {
+  try {
+    const ctrl = new AbortController();
+    const t    = setTimeout(() => ctrl.abort(), 6000);
+    const r    = await fetch(SHEET_URL + "&t=" + Date.now(), {signal: ctrl.signal});
+    clearTimeout(t);
+    if (!r.ok) return;
+    const text = await r.text();
+    const hash = await quickHash(text);
+    if (hash === _lastHash) return;
+    _lastHash = hash;
+    const fresh = parseCSV(text).map((d, i) => ({id: i + 1, ...d}));
+    if (!fresh.length) return;
+    const added   = fresh.length - ALL.length;
+    const customs  = loadCustomListings();
+    const approved = loadApprovedListings();
+    ALL = [...fresh, ...customs, ...approved];
+    applyF();
+    refreshHomeCounts();
+    if (added > 0) {
+      showToast("🔄 " + added + " కొత్త center(s) update అయ్యాయి!");
+      updatePollBadge("updated");
+      setTimeout(() => updatePollBadge("live"), 3000);
+    }
+  } catch (err) {
+    if (err.name !== "AbortError") updatePollBadge("error");
+  }
+}
+
+async function quickHash(str) {
+  const buf = await crypto.subtle.digest(
+    "SHA-1",
+    new TextEncoder().encode(str.slice(0, 2000))
+  );
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16)).join("");
+}
+
+function pausePoll()  { _pollPaused = true;  updatePollBadge("paused"); }
+function resumePoll() { _pollPaused = false; updatePollBadge("live");   }
+
+function updatePollBadge(state) {
+  const el = document.getElementById("pollBadge");
+  if (!el) return;
+  const map = {
+    live:    {text: "🟢 Live",     bg: "var(--grn3)", c: "var(--grn)"},
+    updated: {text: "✨ Updated!", bg: "var(--gld3)", c: "var(--gld)"},
+    paused:  {text: "⏸ Paused",   bg: "var(--bg3)",  c: "var(--t3)"},
+    error:   {text: "🔴 Error",    bg: "var(--redbg)",c: "var(--red)"},
+  };
+  const m = map[state] || map.live;
+  el.textContent       = m.text;
+  el.style.background  = m.bg;
+  el.style.color       = m.c;
+}
+
+function refreshHomeCounts() {
+  const vt = ALL.filter(d => d.Trusted === "true" || d.Trusted === true).length;
+  const stC = document.getElementById("stC"); if (stC) stC.textContent = ALL.length;
+  const stV = document.getElementById("stV"); if (stV) stV.textContent = vt;
+  const aT  = document.getElementById("aT");  if (aT)  aT.textContent  = ALL.length;
+  const aV  = document.getElementById("aV");  if (aV)  aV.textContent  = vt;
+}
+
 async function init(){
   // ── Safety: always hide splash within 4 seconds no matter what ──
   const splashTimer = setTimeout(hideSplash, 4000);
@@ -1371,6 +1455,7 @@ async function init(){
     // Always hide splash
     clearTimeout(splashTimer);
     hideSplash();
+    startAutoPoll();
   }
 }
 
