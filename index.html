@@ -1110,21 +1110,25 @@ const APPROVED_KEY = "ms_approved_listings";
 // ── Secure GAS API helper ──
 async function gasCall(action, data={}, useToken=false) {
   if(!GAS_URL || GAS_URL.includes("YOUR_GAS")) {
-    console.warn("GAS_URL not configured");
+    console.warn("GAS_URL not configured — using localStorage fallback");
     return null;
   }
   const payload = { action, ...data };
   if(useToken) payload.token = sessionStorage.getItem("ms_admin_token") || "";
 
   try {
-    // ✅ KEY FIX: Do NOT set Content-Type header.
-    // Without it, fetch() sends a "simple request" — no OPTIONS preflight.
-    // GAS receives the body fine via e.postData.contents.
-    const r = await fetch(GAS_URL, {
-      method: "POST",
-      // NO headers: {} — this avoids CORS preflight
-      body: JSON.stringify(payload),
+    // GAS CORS fix: encode payload as URL param — avoids preflight OPTIONS request
+    const encoded = encodeURIComponent(JSON.stringify(payload));
+    const url     = GAS_URL + "?data=" + encoded;
+
+    const ctrl = new AbortController();
+    const t    = setTimeout(() => ctrl.abort(), 10000);
+
+    const r = await fetch(url, {
+      method:  "GET",
+      redirect: "follow",
     });
+    clearTimeout(t);
 
     if(!r.ok) {
       console.error("GAS HTTP error:", r.status);
@@ -1133,6 +1137,17 @@ async function gasCall(action, data={}, useToken=false) {
 
     const text = await r.text();
     try {
+      return JSON.parse(text);
+    } catch(e) {
+      // GAS sometimes wraps in callback — strip it
+      const m = text.match(/\{.*\}/s);
+      return m ? JSON.parse(m[0]) : null;
+    }
+  } catch(err) {
+    if(err.name !== "AbortError") console.error("GAS call failed:", err.message);
+    return null;
+  }
+}
       return JSON.parse(text);
     } catch(e) {
       console.error("GAS non-JSON response:", text.slice(0, 200));
@@ -2437,25 +2452,20 @@ async function sendAdminPush(){
 
 /* ══ PUSH NOTIFICATION SUBSCRIPTION ══ */
 async function subscribePush(){
-  if(!("Notification" in window) || !("serviceWorker" in navigator)) return;
-  if(GAS_URL.includes("YOUR_GAS")) return; // GAS not configured
+  if(!("Notification" in window)) return;
+  if(!GAS_URL || GAS_URL.includes("YOUR_GAS")) return;
 
   try {
     const permission = await Notification.requestPermission();
     if(permission !== "granted") return;
 
-    // Register a simple SW if not already done
-    const reg = await navigator.serviceWorker.register("/sw.js").catch(()=>null);
-    if(!reg) return;
-
-    // We use a simple device fingerprint as "token" since full VAPID needs server key
+    // Use existing SW registration (registered at load time)
     const tokenKey = "ms_push_token";
     let token = localStorage.getItem(tokenKey);
     if(!token){
       token = "device_" + Math.random().toString(36).slice(2) + "_" + Date.now();
       localStorage.setItem(tokenKey, token);
     }
-
     await gasCall("save_push_token", { token, userAgent: navigator.userAgent });
     console.log("✅ Push token registered");
   } catch(err) {
@@ -2798,26 +2808,54 @@ document.getElementById("msBrand").addEventListener("click",()=>{
 });
 
 /* ══════════════════════════════════════════
-   PWA — Service Worker + Install Prompt
+   PWA — Service Worker (Inline Blob — no separate sw.js file needed)
 ══════════════════════════════════════════ */
 let deferredPrompt = null;
 
-// ── Register Service Worker ──
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
+    // Inline SW as blob — works on GitHub Pages without a separate sw.js file
+    const swCode = `
+const CACHE = 'meeseva-v1';
+const OFFLINE = ['/meeseva-directory/', '/meeseva-directory/index.html'];
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(OFFLINE).catch(()=>{})));
+  self.skipWaiting();
+});
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys().then(keys =>
+    Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+  ));
+  self.clients.claim();
+});
+self.addEventListener('fetch', e => {
+  if(e.request.method !== 'GET') return;
+  e.respondWith(
+    fetch(e.request).catch(() => caches.match(e.request).then(r => r || caches.match('/meeseva-directory/')))
+  );
+});
+self.addEventListener('push', e => {
+  const d = e.data ? e.data.json() : {title:'మీసేవ', body:'Update వచ్చింది'};
+  e.waitUntil(self.registration.showNotification(d.title||'మీసేవ', {
+    body: d.body||'', icon: '/icon-192.png', badge: '/icon-192.png'
+  }));
+});
+`;
+    const blob = new Blob([swCode], {type: 'application/javascript'});
+    const swUrl = URL.createObjectURL(blob);
+
+    navigator.serviceWorker.register(swUrl, {scope: './'})
       .then(reg => {
-        console.log('[PWA] Service Worker registered:', reg.scope);
+        console.log('[PWA] SW registered ✅');
         reg.addEventListener('updatefound', () => {
-          const newWorker = reg.installing;
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              showToast('🔄 App update available — Refresh చేయండి!', 5000);
-            }
+          const w = reg.installing;
+          w && w.addEventListener('statechange', () => {
+            if(w.state === 'installed' && navigator.serviceWorker.controller)
+              showToast('🔄 App update available — Refresh చేయండి!');
           });
         });
       })
-      .catch(err => console.warn('[PWA] SW registration failed:', err));
+      .catch(err => console.warn('[PWA] SW skipped:', err.message));
   });
 }
 
