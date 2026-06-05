@@ -1067,7 +1067,7 @@ body{font-family:'Space Grotesk',system-ui,sans-serif;font-size:14px;color:var(-
 ══════════════════════════════════════════ */
 
 // 5️⃣ Google Form URL — Operator Listing Submit కోసం
-const GFORM_URL = "https://script.google.com/macros/s/AKfycbw2GMi7uxU5emj7tznWna-8WoGs__t3NT_P8jFnpQGI2YtfcRbhg3m4W_QkC6fQgd4z/exec";
+const GFORM_URL = "https://script.google.com/macros/s/AKfycbxRRH4W7soZLuX7HfOrrmi5-BAFOHvsFE8cPtWk1qJ4AD3pHPnl6Iybz4OxBiIeucpM/exec";
 
 // Google Form Field IDs — Form create చేసిన తర్వాత inspect చేసి fill చేయండి
 // (ఎలా చేయాలో కింద చూడండి)
@@ -1145,16 +1145,6 @@ async function gasCall(action, data={}, useToken=false) {
     }
   } catch(err) {
     if(err.name !== "AbortError") console.error("GAS call failed:", err.message);
-    return null;
-  }
-}
-      return JSON.parse(text);
-    } catch(e) {
-      console.error("GAS non-JSON response:", text.slice(0, 200));
-      return null;
-    }
-  } catch(err) {
-    console.error("GAS call failed:", err.message);
     return null;
   }
 }
