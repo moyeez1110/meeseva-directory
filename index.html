@@ -1089,7 +1089,7 @@ const GFORM_FIELDS = {
 // ══════════════════════════════════════════
 
 // ⚠️  ONLY thing to change: paste your GAS deployment URL below
-const GAS_URL = "https://script.google.com/macros/s/AKfycbw2GMi7uxU5emj7tznWna-8WoGs__t3NT_P8jFnpQGI2YtfcRbhg3m4W_QkC6fQgd4z/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbyPx4Fy7jdTcGxp4VHi0ybaxHhq-bTYfgr5pCDHycKtxWa2odon7oXicLWheeFwfa2e/exec";
 // e.g. "https://script.google.com/macros/s/AKfycbx.../exec"
 
 // ══════════════════════════════════════════
@@ -1098,11 +1098,11 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbw2GMi7uxU5emj7tznWna-8
 // Sheet publish చేయండి: File → Share → Publish to web → Entire Document → Publish
 // Sheet ID: 1j-CHiygl8lpUokDUtXDK-aWPu1z3jeYXvZyxmAFb1K0
 
-const _SID = "1j-CHiygl8lpUokDUtXDK-aWPu1z3jeYXvZyxmAFb1K0";
-const SHEET_URL       = `https://docs.google.com/spreadsheets/d/${_SID}/gviz/tq?tqx=out:csv&sheet=Listings`;
-const NEWS_SHEET_URL  = `https://docs.google.com/spreadsheets/d/${_SID}/gviz/tq?tqx=out:csv&sheet=News`;
-const NOTIF_SHEET_URL = `https://docs.google.com/spreadsheets/d/${_SID}/gviz/tq?tqx=out:csv&sheet=Notifications`;
-const SCHEME_SHEET_URL= `https://docs.google.com/spreadsheets/d/${_SID}/gviz/tq?tqx=out:csv&sheet=Schemes`;
+const _PUB = "2PACX-1vQYpyVGB_2Ka9Clwvu8_73sfI-YZjPKlrbA7RDl49rhgdAVLocYBbCj5MZVohpmgWyQY5iqmQiAgKed";
+const SHEET_URL       = `https://docs.google.com/spreadsheets/d/e/${_PUB}/pub?output=csv`;
+const NEWS_SHEET_URL  = `https://docs.google.com/spreadsheets/d/e/${_PUB}/pub?output=csv&gid=News`;
+const NOTIF_SHEET_URL = `https://docs.google.com/spreadsheets/d/e/${_PUB}/pub?output=csv&gid=Notifications`;
+const SCHEME_SHEET_URL= `https://docs.google.com/spreadsheets/d/e/${_PUB}/pub?output=csv&gid=Schemes`;
 
 // localStorage key for admin-approved listings
 const APPROVED_KEY = "ms_approved_listings";
@@ -1288,30 +1288,46 @@ async function startAutoPoll() {
 
 async function pollSheet() {
   try {
-    const ctrl = new AbortController();
-    const t    = setTimeout(() => ctrl.abort(), 6000);
-    const r    = await fetch(SHEET_URL + "&t=" + Date.now(), {signal: ctrl.signal});
-    clearTimeout(t);
-    if (!r.ok) return;
-    const text = await r.text();
-    const hash = await quickHash(text);
-    if (hash === _lastHash) return;
-    _lastHash = hash;
-    const fresh = parseCSV(text).map((d, i) => ({id: i + 1, ...d}));
-    if (!fresh.length) return;
-    const added   = fresh.length - ALL.length;
+    let fresh = null;
+
+    // GAS నుండి తీసుకో (primary)
+    if(GAS_URL && !GAS_URL.includes("YOUR_GAS")){
+      const res = await gasCall("get_all_data");
+      if(res && res.ok && res.listings && res.listings.length){
+        fresh = res.listings.map((d,i) => ({id: d.ID||i+1, ...d}));
+      }
+    }
+
+    // Fallback: direct CSV
+    if(!fresh){
+      const ctrl = new AbortController();
+      const t    = setTimeout(() => ctrl.abort(), 6000);
+      const r    = await fetch(SHEET_URL + "&t=" + Date.now(), {signal: ctrl.signal});
+      clearTimeout(t);
+      if(!r.ok) return;
+      const text = await r.text();
+      const hash = await quickHash(text);
+      if(hash === _lastHash) return;
+      _lastHash = hash;
+      fresh = parseCSV(text).map((d, i) => ({id: i+1, ...d}));
+    }
+
+    if(!fresh || !fresh.length) return;
+
     const customs  = loadCustomListings();
     const approved = loadApprovedListings();
+    const baseLen  = ALL.length - customs.length - approved.length;
+    const added    = Math.max(0, fresh.length - baseLen);
     ALL = [...fresh, ...customs, ...approved];
     applyF();
     refreshHomeCounts();
-    if (added > 0) {
+    if(added > 0){
       showToast("🔄 " + added + " కొత్త center(s) update అయ్యాయి!");
       updatePollBadge("updated");
       setTimeout(() => updatePollBadge("live"), 3000);
     }
-  } catch (err) {
-    if (err.name !== "AbortError") updatePollBadge("error");
+  } catch(err) {
+    if(err.name !== "AbortError") updatePollBadge("error");
   }
 }
 
@@ -1356,22 +1372,48 @@ async function init(){
   try {
     updateVisitors();
 
-    // Sheet fetch helper — 5s timeout per request
+    // Sheet fetch helper — 8s timeout
     async function fetchSheet(url){
-      if(!url || url.includes("YOUR_")) return null;
+      if(!url) return null;
       try{
         const ctrl = new AbortController();
-        const t = setTimeout(()=>ctrl.abort(), 5000);
-        const r = await fetch(url, {signal: ctrl.signal});
+        const t = setTimeout(()=>ctrl.abort(), 8000);
+        const r = await fetch(url + "&cachebust=" + Date.now(), {signal: ctrl.signal});
         clearTimeout(t);
-        if(!r.ok) throw new Error();
-        return parseCSV(await r.text());
-      } catch(e){ return null; }
+        if(!r.ok){ console.warn("Sheet fetch failed:", r.status, url); return null; }
+        const text = await r.text();
+        if(!text || text.includes("Sign in") || text.includes("Redirecting")){
+          console.warn("Sheet not public or empty:", url);
+          return null;
+        }
+        const rows = parseCSV(text);
+        console.log("✅ Sheet loaded:", url.split("gid=")[1]||"main", "→", rows.length, "rows");
+        return rows;
+      } catch(e){
+        console.warn("Sheet fetch error:", e.message, url);
+        return null;
+      }
     }
 
-    // 1️⃣ Directory
-    const dirRows = await fetchSheet(SHEET_URL);
-    ALL = dirRows ? dirRows.map((d,i)=>({id:i+1,...d})) : DEMO;
+    // 1️⃣ Directory — GAS నుండి తీసుకో (Sheet direct fetch కాదు)
+    let dirRows = null;
+    if(GAS_URL && !GAS_URL.includes("YOUR_GAS")){
+      const gasData = await gasCall("get_all_data");
+      if(gasData && gasData.ok && gasData.listings && gasData.listings.length){
+        dirRows = gasData.listings;
+        console.log("✅ GAS listings loaded:", dirRows.length);
+        // Pending count update
+        const aP = document.getElementById("aP");
+        if(aP && gasData.pendingCount) aP.textContent = gasData.pendingCount;
+      }
+    }
+    // Fallback: direct Sheet CSV fetch
+    if(!dirRows){
+      const csvRows = await fetchSheet(SHEET_URL);
+      if(csvRows && csvRows.length) dirRows = csvRows;
+    }
+    ALL = dirRows ? dirRows.map((d,i)=>({id:d.ID||i+1,...d})) : DEMO;
+    console.log("📋 Total listings:", ALL.length);
 
     // 2️⃣ News
     const newsRows = await fetchSheet(NEWS_SHEET_URL);
