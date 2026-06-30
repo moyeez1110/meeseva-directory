@@ -864,6 +864,16 @@ body{font-family:'Space Grotesk',system-ui,sans-serif;font-size:14px;color:var(-
       <div class="sec-hd"><div class="sec-title"><div class="sec-bar"></div>📊 Results</div></div>
       <div id="resultsList"></div>
     </div>
+
+    <div id="tools-section">
+      <div class="filter-buttons">
+        <button onclick="filterTools('Job')">Jobs</button>
+        <button onclick="filterTools('Result')">Results</button>
+        <button onclick="filterTools('Document')">Documents</button>
+        <button onclick="filterTools('HallTicket')">Hall Tickets</button>
+      </div>
+      <div id="tools-container"></div>
+    </div>
   </div>
 </div>
 
@@ -1094,7 +1104,6 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbw47W3Nbhuec3pnV_qFPyXL
 // Sheet ID: 1j-CHiygl8lpUokDUtXDK-aWPu1z3jeYXvZyxmAFb1K0
 
 // Published Sheet ID (File → Share → Publish to web తో వచ్చిన URL లో ఉంటుంది)
-<script>
   // మీ Published ID (ఇది మారదు)
   const _PUB = "2PACX-1vS41Q9pp_LZJIADtQUHlr2Leshl0t_j8MJfyw4akayunKoBPX6b2inf0_Ll6guocxqNbgvN8n7IsMgX";
 
@@ -1105,7 +1114,6 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbw47W3Nbhuec3pnV_qFPyXL
     tools:     `https://docs.google.com/spreadsheets/d/e/${_PUB}/pub?gid=1466240074&single=true&output=csv`,
     schemes:   `https://docs.google.com/spreadsheets/d/e/${_PUB}/pub?gid=998929241&single=true&output=csv`
   };
-</script>
 
 // localStorage key for admin-approved listings
 const APPROVED_KEY = "ms_approved_listings";
@@ -2828,6 +2836,43 @@ function hideSplash() {
 ══════════════════════════════════════════ */
 // init లో finally{} లో hideSplash() call అవుతుంది
 init();
+</script>
+
+<script>
+  // Google Sheets Config
+  const _PUB = "2PACX-1vS41Q9pp_LZJIADtQUHlr2Leshl0t_j8MJfyw4akayunKoBPX6b2inf0_Ll6guocxqNbgvN8n7IsMgX";
+  const TOOLS_URL = `https://docs.google.com/spreadsheets/d/e/${_PUB}/pub?gid=680755007&single=true&output=csv`;
+
+  // CSV to JSON Parser
+  function parseCSV(csvText) {
+    const lines = csvText.trim().split("\n");
+    const headers = lines[0].split(",").map(h => h.trim());
+    return lines.slice(1).map(line => {
+      const values = line.split(",");
+      let obj = {};
+      headers.forEach((h, i) => obj[h] = values[i] ? values[i].trim() : "");
+      return obj;
+    });
+  }
+
+  // Filter Function
+  function filterTools(category) {
+    fetch(TOOLS_URL)
+      .then(res => res.text())
+      .then(text => {
+        const data = parseCSV(text);
+        const filtered = data.filter(item => item.Category === category);
+        const container = document.getElementById('tools-container');
+        if(container) {
+          container.innerHTML = filtered.map(item => `
+            <div class="tool-card" style="padding:10px; margin:10px; border:1px solid #ccc;">
+              <h3>${item.Title}</h3>
+              <p>${item.Details}</p>
+              <a href="${item.Link}" target="_blank">Click Here</a>
+            </div>`).join('');
+        }
+      });
+  }
 </script>
 </body>
 </html>
