@@ -2839,11 +2839,21 @@ init();
 </script>
 
 <script>
-  // Google Sheets Config
+  // 1. Google Sheets Config (ఇది పాత ఫంక్షన్లకు, కొత్త ఫంక్షన్లకు రెండింటికీ ఉపయోగపడుతుంది)
   const _PUB = "2PACX-1vS41Q9pp_LZJIADtQUHlr2Leshl0t_j8MJfyw4akayunKoBPX6b2inf0_Ll6guocxqNbgvN8n7IsMgX";
-  const TOOLS_URL = `https://docs.google.com/spreadsheets/d/e/${_PUB}/pub?gid=680755007&single=true&output=csv`;
 
-  // CSV to JSON Parser
+  const CONFIG = {
+    listings: `https://docs.google.com/spreadsheets/d/e/${_PUB}/pub?gid=1466240074&single=true&output=csv`,
+    news:     `https://docs.google.com/spreadsheets/d/e/${_PUB}/pub?gid=1476351555&single=true&output=csv`,
+    tools:    `https://docs.google.com/spreadsheets/d/e/${_PUB}/pub?gid=680755007&single=true&output=csv`,
+    schemes:  `https://docs.google.com/spreadsheets/d/e/${_PUB}/pub?gid=998929241&single=true&output=csv`
+  };
+  // 2. పాత ఫంక్షన్ల కోసం మ్యాపింగ్ (ఎర్రర్ రాకుండా)
+  const SHEET_URL        = CONFIG.listings;
+  const NEWS_SHEET_URL   = CONFIG.news;
+  const NOTIF_SHEET_URL  = CONFIG.tools; // పాత నోటిఫికేషన్ ప్లేస్‌లో ఇప్పుడు Tools వాడుతున్నాం
+  const SCHEME_SHEET_URL = CONFIG.schemes;
+  // 3. CSV Parser
   function parseCSV(csvText) {
     const lines = csvText.trim().split("\n");
     const headers = lines[0].split(",").map(h => h.trim());
@@ -2854,10 +2864,9 @@ init();
       return obj;
     });
   }
-
-  // Filter Function
+  // 4. Tools Filter Function
   function filterTools(category) {
-    fetch(TOOLS_URL)
+    fetch(CONFIG.tools)
       .then(res => res.text())
       .then(text => {
         const data = parseCSV(text);
@@ -2865,10 +2874,10 @@ init();
         const container = document.getElementById('tools-container');
         if(container) {
           container.innerHTML = filtered.map(item => `
-            <div class="tool-card" style="padding:10px; margin:10px; border:1px solid #ccc;">
+            <div class="tool-card" style="padding:10px; margin:10px; border:1px solid #ccc; border-radius:8px;">
               <h3>${item.Title}</h3>
               <p>${item.Details}</p>
-              <a href="${item.Link}" target="_blank">Click Here</a>
+              <a href="${item.Link}" target="_blank">మరింత సమాచారం</a>
             </div>`).join('');
         }
       });
